@@ -1,0 +1,78 @@
+Vagrant.configure(2) do |config|
+
+	# before you must install these plugins to speed up vagrant provisionning
+  # vagrant plugin install vagrant-faster
+  # vagrant plugin install vagrant-cachier
+
+  config.cache.auto_detect = true
+	# Set some variables
+  etcHosts = ""
+  k0s = ""
+
+  case ARGV[0]
+    when "provision", "up"
+
+    print "Do you want to install the k0s (y/n) ?\n"
+    k0s = STDIN.gets.chomp
+    print "\n"
+
+  end
+
+    # some settings for common server (not for haproxy)
+  common = <<-SHELL
+  sudo apt update -qq 2>&1 >/dev/null
+  sudo apt install -y -qq unzip iftop curl software-properties-common git vim tree net-tools telnet git python3-venv python3-pip 2>&1 >/dev/null
+  sed -i 's/ChallengeResponseAuthentication no/ChallengeResponseAuthentication yes/g' /etc/ssh/sshd_config
+  sudo systemctl restart sshd
+  SHELL
+
+  rmToken = <<-SHELL
+    rm -f /vagrant/token-file
+  SHELL
+
+  config.vm.box = "debian/bookworm64"
+  config.vm.box_url = "debian/bookworm64"
+
+	NODES = [
+  	{ :hostname => "cast0", :ip => "192.168.144.130", :cpus => 2, :mem => 2048, :type => "controller" },
+  	{ :hostname => "cast1", :ip => "192.168.144.131", :cpus => 4, :mem => 4096, :type => "worker" }
+	]
+
+	# define /etc/hosts for all servers
+  NODES.each do |node|
+	etcHosts += "echo '" + node[:ip] + "   " + node[:hostname] + "'>> /etc/hosts" + "\n"
+  end #end NODES
+
+	# run installation
+  NODES.each do |node|
+    config.vm.define node[:hostname] do |cfg|
+	    cfg.vm.hostname = node[:hostname]
+        cfg.vm.network "private_network", ip: node[:ip]
+        cfg.vm.provider "virtualbox" do |v|
+        v.customize [ "modifyvm", :id, "--cpus", node[:cpus] ]
+        v.customize [ "modifyvm", :id, "--memory", node[:mem] ]
+        v.customize [ "modifyvm", :id, "--natdnshostresolver1", "on" ]
+        v.customize [ "modifyvm", :id, "--natdnsproxy1", "on" ]
+        v.customize [ "modifyvm", :id, "--name", node[:hostname] ]
+		v.customize [ "modifyvm", :id, "--ioapic", "on" ]
+        v.customize [ "modifyvm", :id, "--nictype1", "virtio" ]
+      end #end provider
+			
+			#for all
+        cfg.vm.provision :shell, :path => "install_kka.sh"
+        cfg.vm.provision :shell, :inline => etcHosts
+        cfg.vm.provision :shell, :inline => common
+
+      if k0s == "y"
+          cfg.vm.provision :shell, :path => "install_k0s.sh" , :args => [node[:type]]
+        if node[:type] == "controller"
+          cfg.vm.provision :shell, :path => "install_tools.sh"
+        end  
+        if node[:hostname] == "cast1"
+            cfg.vm.provision :shell, :inline => rmToken
+        end         
+      end  
+
+    end # end config
+  end # end nodes
+end 
