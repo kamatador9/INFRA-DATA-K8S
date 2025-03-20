@@ -1,0 +1,82 @@
+
+helm completion bash | sudo tee /etc/bash_completion.d/helm
+
+# Helm commands
+
+helm repo add bitnami https://charts.bitnami.com/bitnami
+helm repo update
+helm search repo wordpress
+
+helm create mynginx
+
+values.yaml
+
+```
+instances:
+  - name: pierre
+    replicas: 2
+  - name: paul
+    replicas: 5
+  - name: michel
+    replicas: 1
+  - name: julie
+    replicas: 3
+```
+
+deployment.yaml
+
+```
+{{- range $instance := .Values.instances }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $instance.name }}
+spec:
+  replicas: {{ $instance.replicas }}
+  selector:
+    matchLabels:
+      app: {{ $instance.name }}
+  template:
+    metadata:
+      labels:
+        app: {{ $instance.name }}
+    spec:
+      containers:
+        - name: {{ $instance.name }}
+          image: nginx:latest
+{{- end }}
+```
+
+# Helmfile
+
+helmfile diff
+helmfile apply
+helmfile destroy
+
+# helmfile example
+
+cat helmfile.yaml 
+
+```
+helmDefaults:
+  createNamespace: true
+
+releases:
+  - name: xavki
+    namespace: myns
+    chart: ./mynginx
+    values:
+      - values/mynginx.yaml
+```
+
+cat values/mynginx.yaml
+
+```
+instances:
+  - name: xavki
+    replicas: 10
+```
+
+
+
